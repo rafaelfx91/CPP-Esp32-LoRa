@@ -1,79 +1,60 @@
-/*********************************************************************
-  E220-900T22D + DOIT ESP32 DevKit - Só escuta redes LoRa 915 MHz
-  Usa Serial2 → GPIO16 e GPIO17 (NÃO usa TX0/RX0!)
-  Monitor Serial 115200 baud - 2025
-*********************************************************************/
-
 #include <HardwareSerial.h>
-
-// Serial2 do ESP32 → E220 (pinos corretos!)
 HardwareSerial loraSerial(2);
 
-// ==================== PINOS CERTOS ====================
-#define LORA_RX_PIN  16   // ESP32 GPIO16 (RX2) → TXD do E220
-#define LORA_TX_PIN  17   // ESP32 GPIO17 (TX2) → RXD do E220
+#define LORA_RX_PIN 16
+#define LORA_TX_PIN 17
 
-// ==================== CONTADORES ====================
 int pacotes = 0;
-int rssi = -200;
-float snr = -99.0;
 
 void setup() {
-  // Monitor Serial (este sim usa TX0/RX0 - é normal)
   Serial.begin(115200);
   while (!Serial);
-  Serial.println(F("\n=== Sniffer LoRa 915 MHz - E220-900T22D ==="));
-  Serial.println(F("Usando GPIO16 (RX) e GPIO17 (TX) - Serial2"));
-  Serial.println(F("M0 e M1 ligados no GND → modo escuta"));
-  Serial.println(F("Aguardando pacotes...\n"));
+  Serial.println(F("\n=== Sniffer LoRaWAN 915 MHz - MODO TRANSPARENTE TOTAL ==="));
 
-  // Inicia comunicação com o E220 nos pinos certos
   loraSerial.begin(9600, SERIAL_8N1, LORA_RX_PIN, LORA_TX_PIN);
 
-  // Configuração única: 915 MHz, 22 dBm, SF12 (máximo alcance)
-  uint8_t config[] = {0xC0, 0x00, 0x00, 0x1A, 0x17, 0x44};
-  delay(100);
-  loraSerial.write(config, sizeof(config));
-  delay(300);
+  // CONFIGURAÇÃO CORRETA → DESABILITA WOR e força modo transparente 100%
+  uint8_t cfg[] = {0xC0, 0x00, 0x00, 0x1A, 0x17, 0x80};
+  //                                     ^^  ^^  ^^
+  //                                     1A = 9600 baud
+  //                                     17 = canal 23 → 915.0 MHz
+  //                                     80 = 22 dBm + SF12 + WOR DESABILITADO ←←← AQUI!
 
-  Serial.println(F("E220 configurado com sucesso!"));
-  Serial.println(F("915.0 MHz | 22 dBm | SF12 | 125 kHz"));
-  Serial.println(F("========================================\n"));
+  delay(100);
+  loraSerial.write(cfg, sizeof(cfg));
+  delay(300);
+  Serial.println(F("E220 configurado → WOR OFF | 915 MHz | 22 dBm | SF12"));
+  Serial.println(F("Agora vai mostrar TODOS os pacotes com payload!\n"));
 }
 
 void loop() {
   if (loraSerial.available() >= 4) {
     uint8_t header = loraSerial.read();
 
-    // Pacote LoRa recebido
     if (header == 0xC1 || header == 0x00) {
       while (loraSerial.available() < 3);
-      loraSerial.read();                      // tamanho (ignora)
+      uint8_t len     = loraSerial.read();
+      int8_t  rssiRaw = loraSerial.read();
+      int8_t  snrRaw  = loraSerial.read();
 
-      int8_t rssiRaw = loraSerial.read();     // RSSI
-      int8_t snrRaw  = loraSerial.read();     // SNR
+      int rssi = (rssiRaw > 0) ? rssiRaw - 256 : rssiRaw;
+      float snr = snrRaw * 0.25f;
+      if (rssi < -200) return;
 
-      rssi = (rssiRaw < 0) ? rssiRaw : rssiRaw - 256;
-      snr  = snrRaw * 0.25;
       pacotes++;
 
-      // Mostra imediatamente no Monitor Serial
-      Serial.print(F("PACOTE #"));
-      Serial.print(pacotes);
-      Serial.print(F("  →  RSSI: "));
-      Serial.print(rssi);
-      Serial.print(F(" dBm"));
-      Serial.print(F("  |  SNR: "));
-      Serial.print(snr, 1);
-      Serial.print(F(" dB"));
+      Serial.print(F("PACOTE #")); Serial.print(pacotes);
+      Serial.print(F(" | RSSI: ")); Serial.print(rssi); Serial.print(F(" dBm"));
+      Serial.print(F(" | SNR: ")); Serial.print(snr, 1); Serial.print(F(" dB"));
+      Serial.print(F(" | ")); Serial.print(len); Serial.print(F(" bytes → "));
 
-      // Barra de sinal bonitinha
-      int barras = map(constrain(rssi, -130, -40), -130, -40, 0, 40);
-      Serial.print(F("  ["));
-      for (int i = 0; i < 40; i++) {
-        Serial.print(i < barras ? "█" : "░");
+      for (int i = 0; i < len && loraSerial.available(); i++) {
+        uint8_t b = loraSerial.read();
+        if (b < 0x10) Serial.print("0");
+        Serial.print(b, HEX);
+        Serial.print(" ");
       }
-      Serial.println(F("]"));
+      Serial.println();
     }
   }
 }
