@@ -54,11 +54,7 @@ Pronto! Você vai ver todos os pacotes LoRaWAN da sua região em tempo real.
 - Decodificador automático de pacotes Helium e TTN
 - Modo portátil com bateria 18650
 
-### Licença
-MIT © 2025 – [Seu Nome ou Nick]
 
 Sinta-se à vontade para fazer fork, melhorar e usar em projetos comerciais ou pessoais!
 
----
-**Feito com carinho no Brasil**  
-Se curtiu, deixa uma estrela!  
+ 
